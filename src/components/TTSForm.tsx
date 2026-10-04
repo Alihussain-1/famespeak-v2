@@ -7,6 +7,25 @@ import { VoiceOption } from '@/types/tts';
 import { ArrowRight, Settings2, Loader2, Play, Sparkles } from 'lucide-react';
 import HistoryList from '@/components/HistoryList';
 
+function saveHistoryItem(item: any) {
+  if (typeof window === 'undefined') return;
+  try {
+    const saved = localStorage.getItem('tts_history');
+    let list = saved ? JSON.parse(saved) : [];
+    list = [item, ...list];
+    while (list.length > 0) {
+      try {
+        localStorage.setItem('tts_history', JSON.stringify(list));
+        break;
+      } catch (e) {
+        list.pop(); // Remove oldest item if quota exceeded
+      }
+    }
+  } catch (err) {
+    console.warn('Storage save warning:', err);
+  }
+}
+
 export default function TTSForm() {
   const [text, setText] = useState('');
   const [voiceShortName, setVoiceShortName] = useState('en-US-AriaNeural');
@@ -58,32 +77,30 @@ export default function TTSForm() {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-      
+      const data = await res.json().catch(() => null);
       clearInterval(progressInterval);
+
+      if (!res.ok || !data?.success || !data?.audioUrl) {
+        throw new Error(data?.error || `Generation failed (server returned status ${res.status}).`);
+      }
+
       setProgress(100);
 
-      if (data.success && data.audioUrl) {
-        const newHistoryItem = {
-          id: Date.now().toString(),
-          title: `Generated Audio`,
-          text: text,
-          voiceName: voiceNameDisplay,
-          audioUrl: data.audioUrl,
-          srt: data.srt || '',
-          date: new Date().toISOString()
-        };
-        const saved = localStorage.getItem('tts_history');
-        const historyList = saved ? JSON.parse(saved) : [];
-        localStorage.setItem('tts_history', JSON.stringify([newHistoryItem, ...historyList]));
-        window.dispatchEvent(new Event("storage"));
-      } else {
-        alert(data.error || 'Failed to generate audio.');
-      }
-    } catch (err) {
+      saveHistoryItem({
+        id: Date.now().toString(),
+        title: `Generated Audio`,
+        text: text,
+        voiceName: voiceNameDisplay,
+        audioUrl: data.audioUrl,
+        srt: data.srt || '',
+        date: new Date().toISOString()
+      });
+
+      window.dispatchEvent(new Event("storage"));
+    } catch (err: any) {
       clearInterval(progressInterval);
       setProgress(0);
-      alert('Network error. Please check your connection.');
+      alert(err?.message || 'Failed to generate audio. Please try again.');
     } finally {
       setTimeout(() => {
         setLoading(false);
