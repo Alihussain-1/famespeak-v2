@@ -97,6 +97,7 @@ export default function TTSForm() {
       });
 
       window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new Event("tts_history_updated"));
     } catch (err: any) {
       clearInterval(progressInterval);
       setProgress(0);

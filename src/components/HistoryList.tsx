@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Play, Square, Edit2, Check, Loader2, Download, FileAudio, FileText } from 'lucide-react';
+import { Play, Square, Edit2, Check, Loader2, Download, FileAudio, FileText, Trash2 } from 'lucide-react';
 
 export interface HistoryItem {
   id: string;
@@ -68,16 +68,54 @@ export default function HistoryList({ pending }: { pending?: PendingGeneration |
     if (item.srt) setTimeout(() => downloadSrt(item), 300);
   };
 
-  useEffect(() => {
-    const saved = localStorage.getItem('tts_history');
-    if (saved) {
-      try {
+  const refreshHistory = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = localStorage.getItem('tts_history');
+      if (saved) {
         setHistory(JSON.parse(saved));
-      } catch (e) {
-        console.error(e);
+      } else {
+        setHistory([]);
       }
+    } catch (e) {
+      console.error('Failed to parse history:', e);
     }
+  };
+
+  useEffect(() => {
+    refreshHistory();
+
+    const handleUpdate = () => refreshHistory();
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('tts_history_updated', handleUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('tts_history_updated', handleUpdate);
+    };
   }, []);
+
+  // When pending generation finishes, refresh the list immediately
+  useEffect(() => {
+    if (!pending) {
+      refreshHistory();
+    }
+  }, [pending]);
+
+  const deleteItem = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (audioRef.current && playingId === id) {
+      audioRef.current.pause();
+      setPlayingId(null);
+    }
+    const updated = history.filter(item => item.id !== id);
+    setHistory(updated);
+    try {
+      localStorage.setItem('tts_history', JSON.stringify(updated));
+    } catch (err) {
+      console.warn(err);
+    }
+  };
 
   const playAudio = (id: string, url: string) => {
     if (audioRef.current && playingId === id) {
@@ -253,6 +291,15 @@ export default function HistoryList({ pending }: { pending?: PendingGeneration |
                   ) : (
                     <Play className="w-3.5 h-3.5 ml-0.5 fill-current" />
                   )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => deleteItem(item.id, e)}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 transition-opacity"
+                  title="Delete item"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
